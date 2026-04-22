@@ -1,0 +1,36 @@
+# Copyright (c) 2024 Analog Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Secure MQTT Broker for the adafruit io"
+
+config MQTT_CLIENTNAME
+	string "Client name for the broker"
+	default "zephyrClient"
+	help
+	  MQTT broker's client name or IP address.
+
+config MQTT_PASSWORD
+	string "Password for the mqtt broker"
+	default "brokerPass"
+	help
+	  MQTT broker's password or IP address.
+
+config MQTT_ADAFRUIT_TOPIC
+	string "Topic for the mqtt publish"
+	default "zephyrUser/feeds/val"
+	help
+	  MQTT broker's topic or IP address.
+
+config MQTT_BROKER_HOSTNAME
+	string "Password for the mqtt broker"
+	default "io.adafruit.com"
+	help
+	  MQTT broker's hostname or IP address.
+
+config MQTT_BROKER_USERNAME
+	string "Username for the mqtt broker"
+	default "zephyrUser"
+	help
+	  MQTT broker's hostname or IP address.
+
+source "Kconfig.zephyr"

@@ -1,0 +1,12 @@
+sample:
+  name: Adc Sensor Publish with Secure Mqtt
+tests:
+  sample.basic.mqttSecAdc:
+    extra_args: EXTRA_CONF_FILE="overlay-static-insecure.conf"
+    tags:
+      - LED
+      - gpio
+    depends_on: gpio, led, timer, net, mbedtls, adc
+    harness: led
+    integration_platforms:
+      - frdm_k64f

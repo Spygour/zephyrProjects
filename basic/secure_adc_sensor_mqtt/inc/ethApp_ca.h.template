@@ -1,0 +1,6 @@
+#ifndef ethApp_ca_h_
+#define ethApp_ca_h_
+#define CONFIG_ADAFRUIT_IO_CA "-----BEGIN CERTIFICATE-----\n" \ 
+" \n" \
+"-----END CERTIFICATE-----\n"
+#endif
