@@ -1,0 +1,12 @@
+sample:
+  name: Modbus Slave RS485
+tests:
+  sample.basic.modbusSlave:
+    extra_args: EXTRA_CONF_FILE="overlay-static-insecure.conf"
+    tags:
+      - LED
+      - gpio
+    depends_on: gpio, uart
+    harness: led
+    integration_platforms:
+      - frdm_k64f

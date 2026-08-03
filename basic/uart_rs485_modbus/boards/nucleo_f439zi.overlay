@@ -1,0 +1,39 @@
+/ {
+    leds {
+        compatible = "gpio-leds";
+
+        my_led: led_0 {
+            gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>;
+            label = "My led";
+        };
+    };
+
+    aliases {
+		  led4 = &my_led;
+			uart1 = &usart1;
+	  };
+};
+
+&timers2 {
+	status = "okay";
+  st,prescaler = <10000>;
+	counter1: counter {
+		compatible = "st,stm32-counter";
+		status = "okay";
+		label = "COUNTER_2";
+	};
+};
+
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+	pinctrl-names = "default";
+	dmas = <&dma2 7 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>,
+	       <&dma2 2 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>;
+	dma-names = "tx", "rx";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+&dma2 {
+	status = "okay";
+};
