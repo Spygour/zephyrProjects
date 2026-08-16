@@ -30,5 +30,5 @@ typedef enum {
 /* Global functions */
 extern int uart_driverInit(void);
 extern void uart_txEnable(uint8_t *buf, uint32_t size);
-extern void uart_rxEnable(uint32_t timeout);
+extern void uart_rxEnable(uint8_t *buf, uint32_t size, uint32_t timeout);
 #endif

@@ -6,10 +6,16 @@
             gpios = <&gpiob 5 GPIO_ACTIVE_HIGH>;
             label = "My led";
         };
+
+				modbus_en: led_1 {
+						gpios = <&gpioa 2 GPIO_ACTIVE_HIGH>;
+						label = "Modbus Enable";
+				};
     };
 
     aliases {
 		  led4 = &my_led;
+			writepin = &modbus_en;
 			uart1 = &usart1;
 	  };
 };
@@ -30,7 +36,7 @@
 	dmas = <&dma2 7 4 STM32_DMA_PERIPH_TX STM32_DMA_FIFO_FULL>,
 	       <&dma2 2 4 STM32_DMA_PERIPH_RX STM32_DMA_FIFO_FULL>;
 	dma-names = "tx", "rx";
-	current-speed = <115200>;
+	current-speed = <100000>;
 	status = "okay";
 };
 
