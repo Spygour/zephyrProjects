@@ -15,7 +15,7 @@ Each folder inside this repository represents a standalone project focused on di
 
 ---
 
-## 📡 Current Project: ADC MQTT IoT Stream
+## 📡 First project ADC MQTT IoT Stream
 
 ### 📌 Path
 `basic/secure_adc_sensor_mqtt`
@@ -34,17 +34,26 @@ It demonstrates a full embedded IoT pipeline:
 
 ---
 
-### ☁️ Features
+### 📌 Path
+`basic/uart_rs485_modbus`
 
-- ADC multi-channel sampling
-- Threaded architecture (ADC / MQTT / Network)
-- Secure MQTT (TLS)
-- Queue-based data transfer between threads
-- Configurable via Zephyr Kconfig and overlays
+### 🧠 Description
+
+This project demonstrates an modbus slave on STM32F439ZI
+
+Features:
+
+- Control of MAX485 module using the uart STM32F439ZI and gpio
+- Zephyr uart handling
+- Synchronization with master
+- Tested with master m4 core of AM64B Starter Kit board
 
 ---
 
 ### 🔧 Build Example
 
 ```bash
+# MQTT sensor build project
 west build -b nucleo_f439zi samples/basic/secure_adc_sensor_mqtt -p always -- -DEXTRA_CONF_FILE="overlay-user.conf"
+# Modbus slave build project
+west build -b nucleo_f439zi samples/basic/uart_rs485_modbus -p always

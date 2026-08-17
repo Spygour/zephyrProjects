@@ -216,15 +216,16 @@ static void uart_task(void *p1, void *p2, void *p3)
       case MODBUS_WRITE:
       {
         k_sem_take(&uart_rx_sem, K_FOREVER);
-        k_sleep(K_MSEC(100));
+        k_sleep(K_MSEC(10));
         uint32_t rx_true_idx = rx_true_idx = uart_rx_buffer_num_ready - 1;
         uint16_t crc_calc = Modbus_CrcCalc(&Modbus_RxPkt[rx_true_idx]);
         uint16_t crc_actual =
         ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_h << 8) | ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_l);
         if (crc_calc == crc_actual) {
-          /* Modify the RxPacket */
-          memcpy(&Modbus_RxPkt[rx_true_idx], &Modbus_TxPkt, sizeof(MODBUS_PKT_T));
+          /* Modify the TxPacket */
           Modbus_TxPkt.slave_addr = 0x15;
+          Modbus_TxPkt.data_num = 8;
+          Modbus_TxPkt.function = Modbus_RxPkt[rx_true_idx].function;
           for (uint8_t i = 0; i < MODBUS_DATA_SIZE; i++)
           {
             Modbus_TxPkt.data_pck[i] = (i+1)*0x8;
