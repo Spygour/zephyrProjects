@@ -206,6 +206,7 @@ static void uart_task(void *p1, void *p2, void *p3)
       {
         if (uart_txbuf_st != UART_BUFFER_BUSY)
         {
+          k_sleep(K_USEC(50)); /* Wait for 50 more milliseconts before disable it */
           uart_rxEnable((uint8_t*)&Modbus_RxPkt[uart_rx_buffer_num_ready], sizeof(MODBUS_PKT_T), SYS_FOREVER_MS);
           Mobuds_St = MODBUS_WRITE;
         }
@@ -214,31 +215,28 @@ static void uart_task(void *p1, void *p2, void *p3)
 
       case MODBUS_WRITE:
       {
-        if (k_sem_take(&uart_rx_sem, K_MSEC(100)) == 0)
-        {
-          uint32_t rx_true_idx = rx_true_idx = uart_rx_buffer_num_ready - 1;
-          uint16_t crc_calc = Modbus_CrcCalc(&Modbus_RxPkt[rx_true_idx]);
-          uint16_t crc_actual =
-          ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_h << 8) | ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_l);
-          if (crc_calc == crc_actual) {
-            /* Modify the RxPacket */
-            memcpy(&Modbus_RxPkt[rx_true_idx], &Modbus_TxPkt, sizeof(MODBUS_PKT_T));
-            Modbus_TxPkt.slave_addr = 0x15;
-            for (uint8_t i = 0; i < MODBUS_DATA_SIZE; i++)
-            {
-              Modbus_TxPkt.data_pck[i] = (i+1)*0x8;
-            }
-            /* Compute again crc */
-            crc_calc = Modbus_CrcCalc(&Modbus_TxPkt);
-            Modbus_TxPkt.crc_l = (uint8_t)crc_calc;
-            Modbus_TxPkt.crc_h = (uint8_t)(crc_calc >> 8);
-            uart_txEnable((uint8_t*)&Modbus_TxPkt, sizeof(MODBUS_PKT_T)); /* Send the response*/
-            Mobuds_St = MODBUS_READ;
+        k_sem_take(&uart_rx_sem, K_FOREVER);
+        k_sleep(K_MSEC(100));
+        uint32_t rx_true_idx = rx_true_idx = uart_rx_buffer_num_ready - 1;
+        uint16_t crc_calc = Modbus_CrcCalc(&Modbus_RxPkt[rx_true_idx]);
+        uint16_t crc_actual =
+        ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_h << 8) | ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_l);
+        if (crc_calc == crc_actual) {
+          /* Modify the RxPacket */
+          memcpy(&Modbus_RxPkt[rx_true_idx], &Modbus_TxPkt, sizeof(MODBUS_PKT_T));
+          Modbus_TxPkt.slave_addr = 0x15;
+          for (uint8_t i = 0; i < MODBUS_DATA_SIZE; i++)
+          {
+            Modbus_TxPkt.data_pck[i] = (i+1)*0x8;
           }
+          /* Compute again crc */
+          crc_calc = Modbus_CrcCalc(&Modbus_TxPkt);
+          Modbus_TxPkt.crc_l = (uint8_t)crc_calc;
+          Modbus_TxPkt.crc_h = (uint8_t)(crc_calc >> 8);
+          uart_txEnable((uint8_t*)&Modbus_TxPkt, sizeof(MODBUS_PKT_T)); /* Send the response*/
+          Mobuds_St = MODBUS_READ;
         }
-        else {
-          Mobuds_St = MODBUS_WRITE;
-        }
+
       }
       break;
 
@@ -247,6 +245,6 @@ static void uart_task(void *p1, void *p2, void *p3)
     }
 
       /* Wait 100 ms */
-      k_sleep(K_MSEC(100));
+      k_sleep(K_MSEC(10));
   }
 }
