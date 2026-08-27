@@ -9,4 +9,8 @@ config UART_CLIENTNAME
 	help
 	  UART Client Name
 
+config I2C_MAX_BUFFER_SIZE
+	int "Maximum size of buffers used by i2c"
+	default 6
+
 source "Kconfig.zephyr"

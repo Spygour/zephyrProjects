@@ -5,8 +5,10 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(uartRs485Modbus)
 
 target_include_directories(app PRIVATE src/uartApp
+                                       src/i2cApp
                                        inc)
 zephyr_include_directories(inc)
 target_sources(app PRIVATE 
               src/main.c
-              src/uartApp/uartApp.c)
+              src/uartApp/uartApp.c
+              src/i2cApp/i2cApp.c)

@@ -7,11 +7,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "uartApp.h"
+#include "zephyr/kernel.h"
 #include "zephyr/sys/time_units.h"
 #include <zephyr/device.h>
 #include <string.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/kernel.h>
 #include <zephyr/linker/sections.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/gpio.h>
@@ -31,6 +31,12 @@ LOG_MODULE_REGISTER(uartApp, LOG_LEVEL_INF);
 #define UART_TASK_STACK_SIZE 1024
 #define UART_TASK_PRIORITY 5
 
+/* MODBUS CHARS */
+#define MODBUS_SLAVE_ADDRESS 0xA8u
+#define MODBUS_MASTER_ADDRESS 0x25U
+#define MODBUS_FUNC_NUM 0x2u
+#define MODBUS_FUNC_ERR (MODBUS_FUNC_NUM - 1)
+
 /* Types */
 typedef enum  {
   MODBUS_READ,
@@ -38,17 +44,45 @@ typedef enum  {
   MODBUS_FAIL
 }Modbus_St_t;
 
+/* Function declaration*/
+static void Modbus_Read_Temp(MODBUS_PKT_T* modbuspktTx, MODBUS_PKT_T* modbuspktRx);
+static void Modbus_Send_Negative(MODBUS_PKT_T* modbuspktTx, MODBUS_PKT_T* modbuspktRx);
+
 /* Static variables */
+K_THREAD_STACK_DEFINE(uart_task_stack, UART_TASK_STACK_SIZE);
+static struct k_thread uart_task_data;
+static k_tid_t uart_task_id;
+
 static const struct gpio_dt_spec wr_en = GPIO_DT_SPEC_GET(MODBUS_EN_NODE, gpios);
 
 static MODBUS_PKT_T Modbus_TxPkt;
 static MODBUS_PKT_T Modbus_RxPkt[MODBUS_PKT_NUM];
+static int Modbus_RxEval =  0;
+
+static const MODBUS_FUNC_T Modbus_FuncArray[MODBUS_FUNC_NUM] = 
+{
+  {
+    .function_id = 0x15U,
+    .modbus_func = Modbus_Read_Temp
+  },
+  {
+    .function_id = 0xFEU,
+    .modbus_func = Modbus_Send_Negative
+  }
+};
 
 static Modbus_St_t Mobuds_St = MODBUS_READ;
 
 /* Global variables */
 uint8_t uart_rx_buffer_num = 0;
 uint8_t uart_rx_buffer_num_ready = 0;
+temperature_msg_t temperature_msg = {
+  0x0u, false
+};
+
+struct k_mutex temperature_read;
+
+bool UartApp_Ready = false;
 
 uart_buf_st_t uart_txbuf_st = UART_BUFFER_READ_ALLOW;
 
@@ -57,22 +91,11 @@ K_SEM_DEFINE(uart_rx_sem, 0, 1);
 /* queue to store up to 10 messages (aligned to 4-byte boundary) */
 K_MSGQ_DEFINE(uart_msgq, MSG_SIZE, 10, 4);
 
-K_SEM_DEFINE(uart_init_sem, 0, 1);
 
 static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
 /* Static functions */
 static void uart_task(void *p1, void *p2, void *p3);
-
-K_THREAD_DEFINE(uart_task_id,
-                UART_TASK_STACK_SIZE,
-                uart_task,
-                NULL,
-                NULL,
-                NULL,
-                UART_TASK_PRIORITY,
-                0,
-                0);
 
 static uint16_t Modbus_CrcCalc(MODBUS_PKT_T *modbuspkt) {
   uint8_t *data = (uint8_t *)modbuspkt; /* Remove the data len */
@@ -96,6 +119,74 @@ static uint16_t Modbus_CrcCalc(MODBUS_PKT_T *modbuspkt) {
   }
 
   return modbus_crc;
+}
+
+static int Modbus_EvaluatePacket(MODBUS_PKT_T *modbuspkt)
+{
+  int rc = 0;
+
+  uint16_t crc_calc = Modbus_CrcCalc(modbuspkt);
+  uint16_t crc_actual =
+  ((uint16_t)modbuspkt->crc_h << 8) | ((uint16_t)modbuspkt->crc_l);
+  if (crc_calc != crc_actual) {
+    /* Modify the TxPacket */
+    rc = -2;
+    return rc;
+  }
+
+  if (modbuspkt->slave_addr != MODBUS_SLAVE_ADDRESS) {
+    /* Modify the TxPacket */
+    rc = -1;
+    return rc;
+  }
+
+  rc = MODBUS_FUNC_NUM;
+  for (uint8_t i = 0; i < MODBUS_FUNC_NUM; i++)
+  {
+    if (modbuspkt->function == Modbus_FuncArray[i].function_id) {
+      rc = i;
+      break;
+    }
+  }
+
+  return rc;
+}
+
+static void Modbus_Read_Temp(MODBUS_PKT_T* modbuspktTx, MODBUS_PKT_T* modbuspktRx)
+{
+  uint16_t crc_tx = 0;
+  modbuspktTx->slave_addr = MODBUS_MASTER_ADDRESS;
+  modbuspktTx->function = modbuspktRx->function;
+  modbuspktTx->data_num = 8;
+  k_mutex_lock(&temperature_read, K_FOREVER);
+  modbuspktTx->data_pck[0] = (uint8_t)temperature_msg.temperature & 0xFF;
+  modbuspktTx->data_pck[1] = (uint8_t)(temperature_msg.temperature >> 8);
+  k_mutex_unlock(&temperature_read);
+  for (uint8_t i = sizeof(temperature_msg.temperature); i < modbuspktTx->data_num; i++)
+  {
+    modbuspktTx->data_pck[i] = 0x0u;
+  }
+  /* There is no else send the previous temperature that was stored */
+  crc_tx = Modbus_CrcCalc(modbuspktTx);
+  modbuspktTx->crc_l = (uint8_t)crc_tx;
+  modbuspktTx->crc_h = (uint8_t)(crc_tx >> 8);
+}
+
+static void Modbus_Send_Negative(MODBUS_PKT_T* modbuspktTx, MODBUS_PKT_T* modbuspktRx)
+{
+  uint16_t crc_tx = 0;
+  modbuspktTx->slave_addr = 0x25;
+  modbuspktTx->function = Modbus_FuncArray[MODBUS_FUNC_ERR].function_id;
+  modbuspktTx->data_num = 8;
+  memcpy(modbuspktTx->data_pck, &Modbus_RxEval, sizeof(Modbus_RxEval));
+  for (uint8_t i = sizeof(Modbus_RxEval); i < modbuspktTx->data_num; i++)
+  {
+    modbuspktTx->data_pck[i] = 0x0u;
+  }
+  /* There is no else send the previous temperature that was stored */
+  crc_tx = Modbus_CrcCalc(modbuspktTx);
+  modbuspktTx->crc_l = (uint8_t)crc_tx;
+  modbuspktTx->crc_h = (uint8_t)(crc_tx >> 8);
 }
 
 static void uart_callback(const struct device *dev, struct uart_event *evt, void *user_data) {
@@ -167,7 +258,7 @@ int uart_driverInit(void)
 
 	rc = gpio_pin_configure_dt(&wr_en, GPIO_OUTPUT_INACTIVE);
 	if (rc < 0) {
-		return 0;
+		return -EFAULT;
 	}
 
   if (!device_is_ready(uart_dev))
@@ -178,7 +269,23 @@ int uart_driverInit(void)
 
   uart_callback_set(uart_dev, uart_callback, (void *)uart_dev);
 
-  k_sem_give(&uart_init_sem);
+  k_mutex_init(&temperature_read);
+
+  uart_task_id = k_thread_create(&uart_task_data,
+                                  uart_task_stack,
+                                  K_THREAD_STACK_SIZEOF(uart_task_stack),
+                                  uart_task,
+                                  NULL,
+                                  NULL,
+                                  NULL,
+                                  UART_TASK_PRIORITY,
+                                  0,
+                                  K_NO_WAIT);
+
+  if (uart_task_id == NULL) {
+        return -ENOMEM;
+  }
+
   return rc;
 }
 
@@ -197,8 +304,8 @@ void uart_txEnable(uint8_t *buf, uint32_t size)
 
 static void uart_task(void *p1, void *p2, void *p3)
 {
-  k_sem_take(&uart_init_sem, K_FOREVER);
-  Mobuds_St = MODBUS_READ;
+  uart_rxEnable((uint8_t*)&Modbus_RxPkt[uart_rx_buffer_num_ready], sizeof(MODBUS_PKT_T), SYS_FOREVER_MS);
+  Mobuds_St = MODBUS_WRITE;
   while (1)
   {
     switch(Mobuds_St){
@@ -206,7 +313,7 @@ static void uart_task(void *p1, void *p2, void *p3)
       {
         if (uart_txbuf_st != UART_BUFFER_BUSY)
         {
-          k_sleep(K_USEC(50)); /* Wait for 50 more milliseconts before disable it */
+          k_sleep(K_USEC(50)); /* Wait for 50 more microseconds before disable it */
           uart_rxEnable((uint8_t*)&Modbus_RxPkt[uart_rx_buffer_num_ready], sizeof(MODBUS_PKT_T), SYS_FOREVER_MS);
           Mobuds_St = MODBUS_WRITE;
         }
@@ -218,26 +325,15 @@ static void uart_task(void *p1, void *p2, void *p3)
         k_sem_take(&uart_rx_sem, K_FOREVER);
         k_sleep(K_MSEC(10));
         uint32_t rx_true_idx = rx_true_idx = uart_rx_buffer_num_ready - 1;
-        uint16_t crc_calc = Modbus_CrcCalc(&Modbus_RxPkt[rx_true_idx]);
-        uint16_t crc_actual =
-        ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_h << 8) | ((uint16_t)Modbus_RxPkt[rx_true_idx].crc_l);
-        if (crc_calc == crc_actual) {
-          /* Modify the TxPacket */
-          Modbus_TxPkt.slave_addr = 0x15;
-          Modbus_TxPkt.data_num = 8;
-          Modbus_TxPkt.function = Modbus_RxPkt[rx_true_idx].function;
-          for (uint8_t i = 0; i < MODBUS_DATA_SIZE; i++)
-          {
-            Modbus_TxPkt.data_pck[i] = (i+1)*0x8;
-          }
-          /* Compute again crc */
-          crc_calc = Modbus_CrcCalc(&Modbus_TxPkt);
-          Modbus_TxPkt.crc_l = (uint8_t)crc_calc;
-          Modbus_TxPkt.crc_h = (uint8_t)(crc_calc >> 8);
-          uart_txEnable((uint8_t*)&Modbus_TxPkt, sizeof(MODBUS_PKT_T)); /* Send the response*/
-          Mobuds_St = MODBUS_READ;
+        Modbus_RxEval = Modbus_EvaluatePacket(&Modbus_RxPkt[rx_true_idx]);
+        if ( (Modbus_RxEval < MODBUS_FUNC_NUM) && (Modbus_RxEval >= 0) ) {
+          Modbus_FuncArray[Modbus_RxEval].modbus_func(&Modbus_TxPkt, &Modbus_RxPkt[rx_true_idx]);
         }
-
+        else {
+          Modbus_FuncArray[MODBUS_FUNC_ERR].modbus_func(&Modbus_TxPkt, &Modbus_RxPkt[rx_true_idx]);
+        }
+        uart_txEnable((uint8_t*)&Modbus_TxPkt, sizeof(MODBUS_PKT_T)); /* Send the response*/
+        Mobuds_St = MODBUS_READ;
       }
       break;
 

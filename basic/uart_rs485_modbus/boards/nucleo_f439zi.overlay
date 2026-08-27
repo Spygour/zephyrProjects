@@ -15,6 +15,7 @@
 
     aliases {
 		  led4 = &my_led;
+			i2c-controller = &i2c2;
 			writepin = &modbus_en;
 			uart1 = &usart1;
 	  };
@@ -38,6 +39,13 @@
 	dma-names = "tx", "rx";
 	current-speed = <100000>;
 	status = "okay";
+};
+
+&i2c2 {
+	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+	pinctrl-names = "default";
+	status = "okay";
+	clock-frequency = <400000>;
 };
 
 &dma2 {

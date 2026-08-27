@@ -9,6 +9,7 @@
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include "uartApp/uartApp.h"
+#include "i2cApp/i2cApp.h"
 
 /* 1000 msec = 1 sec */
 #define SLEEP_TIME_MS   1000
@@ -20,7 +21,19 @@
 int main(void)
 {
 	int rc;
+
 	rc = uart_driverInit();
+	if (rc < 0)
+	{
+		return 0;
+	}
+
+	rc = i2c_driverInit();
+	if (rc < 0) 
+	{
+		return 0;
+	}
+
 	while (1) {
 
 		k_msleep(SLEEP_TIME_MS);
